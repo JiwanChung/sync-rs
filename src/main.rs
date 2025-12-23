@@ -398,28 +398,60 @@ fn run_rsync(
     Ok(())
 }
 
+fn format_size(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+
+    if bytes >= GB {
+        format!("{:.2} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.2} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.2} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
+fn parse_bytes(s: &str) -> Option<u64> {
+    s.replace(",", "").parse().ok()
+}
+
 fn print_summary(stats: &[String], duration: Duration) {
-    let mut sent_line = None;
-    let mut total_size = None;
+    let mut sent_bytes: Option<u64> = None;
+    let mut total_bytes: Option<u64> = None;
 
     for line in stats {
         let line = line.trim();
+        // Parse "sent 2,327 bytes  received 274 bytes ..."
         if line.starts_with("sent ") {
-            sent_line = Some(line.to_string());
+            if let Some(bytes_str) = line.strip_prefix("sent ") {
+                if let Some(end) = bytes_str.find(" bytes") {
+                    sent_bytes = parse_bytes(&bytes_str[..end]);
+                }
+            }
         }
+        // Parse "total size is 706,617,380  speedup is ..."
         if line.starts_with("total size is ") {
-            total_size = Some(line.to_string());
+            if let Some(rest) = line.strip_prefix("total size is ") {
+                if let Some(end) = rest.find("  ") {
+                    total_bytes = parse_bytes(&rest[..end]);
+                } else {
+                    total_bytes = parse_bytes(rest);
+                }
+            }
         }
     }
 
     println!("Summary:");
-    if let Some(line) = sent_line {
-        println!("{}", line);
+    if let Some(bytes) = sent_bytes {
+        println!("  sent: {}", format_size(bytes));
     }
-    if let Some(line) = total_size {
-        println!("{}", line);
+    if let Some(bytes) = total_bytes {
+        println!("  total size: {}", format_size(bytes));
     }
-    println!("duration: {:.2?}", duration);
+    println!("  duration: {:.2?}", duration);
 }
 
 fn base_rsync_args(args: &Args, dry_run: bool) -> Vec<String> {
@@ -431,7 +463,7 @@ fn base_rsync_args(args: &Args, dry_run: bool) -> Vec<String> {
         list.push("--info=progress2".to_string());
     }
     list.push("-e".to_string());
-    list.push(ssh_args().join(" "));
+    list.push(format!("ssh {}", ssh_args().join(" ")));
     list.push("--stats".to_string());
     if !dry_run {
         list.push("--out-format=%n".to_string());
