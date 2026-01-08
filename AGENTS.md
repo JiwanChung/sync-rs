@@ -24,9 +24,10 @@ The tool maps paths relative to the user's home directory across different envir
 
 ### 🔄 Sync Directions & Dry Run
 
-* **Push (Default):** Local  Remote.
-* **Pull (`--pull`):** Remote  Local.
-* **Dry Run (`-d`):** Displays a tree-style diff and transfer size.
+* **Bidirectional (Default):** Local <-> Remote (Newer Wins via sequential `-u` passes).
+* **Push (`--push`):** Local -> Remote.
+* **Pull (`--pull`):** Remote -> Local.
+* **Dry Run (`-d`):** Displays a tree-style diff and transfer size for all active sync directions.
 
 ---
 
@@ -51,11 +52,12 @@ The tool maps paths relative to the user's home directory across different envir
 
 ## 5. Development Roadmap
 
-* [ ] **Phase 1: CLI & SSH Discovery.** Implement `clap` and `~/.ssh/config` parsing.
-* [ ] **Phase 2: Smart Pathing.** Logic for home-directory translation and `mkdir -p` triggers.
-* [ ] **Phase 3: Rsync Execution.** Wrapping the system `rsync` with optimized flags (`-avzP`).
-* [ ] **Phase 4: Dry Run Visualizer.** Parsing `--dry-run` output into a clean human-readable tree.
-* [ ] **Phase 5: Performance.** Implement SSH multiplexing check.
+* [x] **Phase 1: CLI & SSH Discovery.** Implement `clap` and `~/.ssh/config` parsing.
+* [x] **Phase 2: Smart Pathing.** Logic for home-directory translation and `mkdir -p` triggers.
+* [x] **Phase 3: Rsync Execution.** Wrapping the system `rsync` with optimized flags (`-avzP`).
+* [x] **Phase 4: Dry Run Visualizer.** Parsing `--dry-run` output into a clean human-readable tree.
+* [x] **Phase 5: Performance.** Implement SSH multiplexing check.
+* [x] **Phase 6: Bidirectional Sync.** Sequential rsync passes with `--update`.
 
 ---
 

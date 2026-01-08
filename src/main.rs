@@ -38,8 +38,12 @@ struct Args {
     /// Host to sync with; if omitted, a picker from ~/.ssh/config is used
     host: Option<String>,
 
-    /// Pull remote -> local (default is push local -> remote)
-    #[arg(long, action = ArgAction::SetTrue)]
+    /// Push local -> remote (default is bidirectional)
+    #[arg(long, action = ArgAction::SetTrue, conflicts_with = "pull")]
+    push: bool,
+
+    /// Pull remote -> local (default is bidirectional)
+    #[arg(long, action = ArgAction::SetTrue, conflicts_with = "push")]
     pull: bool,
 
     /// Dry run: show a tree-style diff and transfer size
@@ -49,6 +53,16 @@ struct Args {
     /// Skip syncing permissions (useful for macOS/Linux UID/GID clashes)
     #[arg(long, action = ArgAction::SetTrue)]
     no_perms: bool,
+}
+
+impl Args {
+    fn is_push(&self) -> bool {
+        self.push || (!self.push && !self.pull)
+    }
+
+    fn is_pull(&self) -> bool {
+        self.pull || (!self.push && !self.pull)
+    }
 }
 
 fn main() -> Result<()> {
@@ -66,10 +80,14 @@ fn main() -> Result<()> {
 
     let remote_path = map_to_remote(&local_path, &home);
 
-    if args.pull {
-        pull(&runner, &host, &local_path, &remote_path, &args)?;
-    } else {
-        push(&runner, &host, &local_path, &remote_path, &args)?;
+    if args.is_push() {
+        let context = if args.is_pull() { "[Upstream]" } else { "" };
+        push(&runner, &host, &local_path, &remote_path, &args, context)?;
+    }
+
+    if args.is_pull() {
+        let context = if args.is_push() { "[Downstream]" } else { "" };
+        pull(&runner, &host, &local_path, &remote_path, &args, context)?;
     }
 
     Ok(())
@@ -175,6 +193,7 @@ fn push(
     local_path: &Path,
     remote_path: &str,
     args: &Args,
+    context: &str,
 ) -> Result<()> {
     let is_file = local_path.is_file();
     let remote_parent = if is_file {
@@ -186,14 +205,20 @@ fn push(
     ensure_remote_parent(runner, host, &remote_parent)?;
 
     if args.dry_run {
-        let summary = run_dry_run(runner, host, local_path, remote_path, is_file, args)?;
+        if !context.is_empty() {
+            println!("{}", context);
+        }
+        let summary = run_dry_run(runner, host, local_path, remote_path, is_file, args, false)?;
         println!("{}", summary.tree);
         if let Some(line) = summary.transferred_line {
             println!("{}", line);
         }
         Ok(())
     } else {
-        run_rsync(host, local_path, remote_path, is_file, args)
+        if !context.is_empty() {
+            println!("{}", context);
+        }
+        run_rsync(host, local_path, remote_path, is_file, args, false)
     }
 }
 
@@ -203,6 +228,7 @@ fn pull(
     local_path: &Path,
     remote_path: &str,
     args: &Args,
+    context: &str,
 ) -> Result<()> {
     let is_file = remote_is_file(runner, host, remote_path).unwrap_or(false);
     let local_parent = if is_file {
@@ -219,14 +245,20 @@ fn pull(
         .with_context(|| format!("failed to create {}", local_parent.display()))?;
 
     if args.dry_run {
-        let summary = run_dry_run(runner, host, local_path, remote_path, is_file, args)?;
+        if !context.is_empty() {
+            println!("{}", context);
+        }
+        let summary = run_dry_run(runner, host, local_path, remote_path, is_file, args, true)?;
         println!("{}", summary.tree);
         if let Some(line) = summary.transferred_line {
             println!("{}", line);
         }
         Ok(())
     } else {
-        run_rsync(host, local_path, remote_path, is_file, args)
+        if !context.is_empty() {
+            println!("{}", context);
+        }
+        run_rsync(host, local_path, remote_path, is_file, args, true)
     }
 }
 
@@ -278,8 +310,9 @@ fn run_dry_run(
     remote_path: &str,
     is_file: bool,
     args: &Args,
+    pulling: bool,
 ) -> Result<DryRunSummary> {
-    let (src, dst) = sync_endpoints(host, local_path, remote_path, is_file, args.pull);
+    let (src, dst) = sync_endpoints(host, local_path, remote_path, is_file, pulling);
 
     let mut cmd_args = base_rsync_args(args, true);
     cmd_args.push("--dry-run".to_string());
@@ -315,12 +348,13 @@ fn run_rsync(
     local_path: &Path,
     remote_path: &str,
     is_file: bool,
-    pulling: &Args,
+    args: &Args,
+    pulling: bool,
 ) -> Result<()> {
-    let (src, dst) = sync_endpoints(host, local_path, remote_path, is_file, pulling.pull);
+    let (src, dst) = sync_endpoints(host, local_path, remote_path, is_file, pulling);
 
     let mut cmd = Command::new("rsync");
-    cmd.args(base_rsync_args(pulling, false));
+    cmd.args(base_rsync_args(args, false));
     cmd.arg(src);
     cmd.arg(dst);
     cmd.stdout(Stdio::piped());
@@ -455,7 +489,7 @@ fn print_summary(stats: &[String], duration: Duration) {
 }
 
 fn base_rsync_args(args: &Args, dry_run: bool) -> Vec<String> {
-    let mut list = vec!["-avz".to_string()];
+    let mut list = vec!["-avzu".to_string()];
     if !dry_run {
         list.push("-P".to_string());
         list.push("--partial".to_string());
@@ -491,8 +525,8 @@ fn sync_endpoints(
         (local_path.to_string_lossy().to_string(), remote_path.to_string())
     } else {
         (
-            format!("{}/", local_path.to_string_lossy()),
-            format!("{}/", remote_path),
+            format!( "{}/", local_path.to_string_lossy()),
+            format!( "{}/", remote_path),
         )
     };
 
@@ -563,12 +597,12 @@ fn insert_path(root: &mut TreeNode, path: &str) {
 
 fn render_node(lines: &mut Vec<String>, name: &str, node: &TreeNode, prefix: &str, last: bool) {
     let branch = if last { "+--" } else { "|--" };
-    lines.push(format!("{}{} {}", prefix, branch, name));
+    lines.push(format!( "{}{} {}", prefix, branch, name));
 
     let next_prefix = if last {
-        format!("{}   ", prefix)
+        format!( "{}   ", prefix)
     } else {
-        format!("{}|  ", prefix)
+        format!( "{}|  ", prefix)
     };
 
     let mut iter = node.children.iter().peekable();
@@ -587,7 +621,7 @@ fn shell_escape(value: &str) -> String {
             out.push(ch);
         }
     }
-    out.push('\'');
+    out.push('"');
     out
 }
 
@@ -678,6 +712,48 @@ mod tests {
     }
 
     #[test]
+    fn args_default_to_bidirectional() {
+        let args = Args {
+            path: "foo".to_string(),
+            host: None,
+            push: false,
+            pull: false,
+            dry_run: false,
+            no_perms: false,
+        };
+        assert!(args.is_push());
+        assert!(args.is_pull());
+    }
+
+    #[test]
+    fn args_push_only() {
+        let args = Args {
+            path: "foo".to_string(),
+            host: None,
+            push: true,
+            pull: false,
+            dry_run: false,
+            no_perms: false,
+        };
+        assert!(args.is_push());
+        assert!(!args.is_pull());
+    }
+
+    #[test]
+    fn args_pull_only() {
+        let args = Args {
+            path: "foo".to_string(),
+            host: None,
+            push: false,
+            pull: true,
+            dry_run: false,
+            no_perms: false,
+        };
+        assert!(!args.is_push());
+        assert!(args.is_pull());
+    }
+
+    #[test]
     fn remote_is_file_uses_ssh() {
         let host = "example";
         let remote = "~/projects/app/file.txt";
@@ -722,6 +798,7 @@ mod tests {
         let args = Args {
             path: "project".to_string(),
             host: Some("example".to_string()),
+            push: false,
             pull: false,
             dry_run: true,
             no_perms: false,
@@ -752,8 +829,9 @@ mod tests {
             status: None,
         }]);
 
+        // Testing dry run for push direction (pulling=false)
         let summary =
-            run_dry_run(&runner, "example", local_path, remote_path, false, &args).unwrap();
+            run_dry_run(&runner, "example", local_path, remote_path, false, &args, false).unwrap();
         assert!(summary.tree.contains("+-- foo.txt"));
         assert!(summary.tree.lines().any(|line| line.ends_with(" dir")));
         assert!(summary.tree.contains("+-- bar.txt"));

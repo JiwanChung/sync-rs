@@ -20,7 +20,8 @@
 
 - **Smart Path Mapping** — `~/projects/foo` syncs to `~/projects/foo` on remote, regardless of different home paths
 - **Zero Config** — Just run it. No config files needed
-- **Bi-directional** — Push (default) or pull with `--pull`
+- **Bi-directional (Default)** — Automatically syncs both ways (Newer Wins)
+- **Uni-directional** — Explicitly push with `--push` or pull with `--pull`
 - **Dry-run Preview** — See a tree-style diff before syncing
 - **SSH Host Picker** — Fuzzy-select hosts from `~/.ssh/config`
 - **Progress Display** — Real-time transfer progress with summary stats
@@ -37,10 +38,13 @@ cargo install --git https://github.com/JiwanChung/sync-rs
 ## Quick Start
 
 ```bash
-# Push to remote
+# Sync both ways (default)
 sync-rs ~/projects/my-app my-server
 
-# Pull from remote
+# Push only
+sync-rs --push ~/projects/my-app my-server
+
+# Pull only
 sync-rs --pull ~/projects/my-app my-server
 
 # Preview changes first
@@ -58,7 +62,8 @@ sync-rs [OPTIONS] <PATH> [HOST]
 
 | Option | Description |
 |--------|-------------|
-| `--pull` | Pull from remote to local (default is push) |
+| `--push` | Push from local to remote (disables bidirectional) |
+| `--pull` | Pull from remote to local (disables bidirectional) |
 | `-d`, `--dry-run` | Preview changes with tree diff |
 | `--no-perms` | Skip permission sync (useful for macOS/Linux) |
 
