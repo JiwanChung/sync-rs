@@ -64,11 +64,12 @@ syncz [OPTIONS] <PATH> [HOST]
 |--------|-------------|
 | `--push` | Push from local to remote (disables bidirectional) |
 | `--pull` | Pull from remote to local (disables bidirectional) |
-| `--watch` | Watch for local changes and sync (Push mode) |
-| `--all` | Disable default smart excludes |
-| `--gitignore` | Respect `.gitignore` file |
+| `-w`, `--watch` | Watch for local changes and sync (Push mode) |
+| `-a`, `--all` | Disable default smart excludes |
+| `-l`, `--large` | Allow large files (>10MB) |
+| `-g`, `--gitignore` | Respect `.gitignore` file |
 | `--max-size <S>` | Exclude files larger than SIZE |
-| `--backup` | Backup updated files to `.syncz-backups` |
+| `-b`, `--backup` | Backup updated files to `.syncz-backups` |
 | `-d`, `--dry-run` | Preview changes with tree diff |
 | `--no-perms` | Skip permission sync (useful for macOS/Linux) |
 

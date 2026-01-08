@@ -48,23 +48,27 @@ struct Args {
     pull: bool,
 
     /// Watch for file changes and sync automatically (defaults to Push mode)
-    #[arg(long, action = ArgAction::SetTrue)]
+    #[arg(short = 'w', long, action = ArgAction::SetTrue)]
     watch: bool,
 
-    /// Sync everything (disable default smart excludes)
-    #[arg(long, action = ArgAction::SetTrue)]
+    /// Sync everything (disable default smart excludes and size limits)
+    #[arg(short = 'a', long, action = ArgAction::SetTrue)]
     all: bool,
 
+    /// Allow large files (disables the default 10MB size limit)
+    #[arg(short = 'l', long, action = ArgAction::SetTrue)]
+    large: bool,
+
     /// Use .gitignore to exclude files
-    #[arg(long, action = ArgAction::SetTrue)]
+    #[arg(short = 'g', long, action = ArgAction::SetTrue)]
     gitignore: bool,
 
-    /// Exclude files larger than SIZE (e.g. 100M, 1G)
+    /// Override max size limit (e.g. 100M, 1G)
     #[arg(long)]
     max_size: Option<String>,
 
     /// Backup updated/deleted files on the destination
-    #[arg(long, action = ArgAction::SetTrue)]
+    #[arg(short = 'b', long, action = ArgAction::SetTrue)]
     backup: bool,
 
     /// Dry run: show a tree-style diff and transfer size
@@ -90,13 +94,9 @@ fn main() -> Result<()> {
     let mut args = Args::parse();
     let runner = RealRunner;
 
-    // Smart argument handling:
-    // If only ONE positional argument is provided, and it's NOT a local path,
-    // treat it as the host and default path to '.'
     if args.path.is_some() && args.host.is_none() {
         let p = args.path.as_ref().unwrap();
         if !Path::new(p).exists() {
-            // It's likely a host
             args.host = args.path.take();
             args.path = Some(".".to_string());
         }
@@ -141,7 +141,6 @@ fn main() -> Result<()> {
 
     Ok(())
 }
-
 fn get_state_path() -> Result<PathBuf> {
     let home = dirs::home_dir().ok_or_else(|| anyhow!("unable to resolve home dir"))?;
     Ok(home.join(".syncz_state"))
@@ -248,7 +247,6 @@ fn map_to_remote(local: &Path, home: &Path) -> String {
         local.to_string_lossy().to_string()
     }
 }
-
 fn pick_host_from_ssh_config() -> Result<String> {
     let hosts = read_ssh_hosts()?;
     if hosts.is_empty() {
@@ -372,7 +370,6 @@ fn pull(
         run_rsync(host, local_path, remote_path, is_file, args, true)
     }
 }
-
 fn remote_is_file(runner: &dyn CommandRunner, host: &str, remote_path: &str) -> Result<bool> {
     let mut args = ssh_args();
     args.push(host.to_string());
@@ -453,7 +450,6 @@ fn run_dry_run(
         transferred_line,
     })
 }
-
 fn run_rsync(
     host: &str,
     local_path: &Path,
@@ -620,7 +616,6 @@ fn print_summary(stats: &[String], duration: Duration) {
     }
     println!("  duration: {:.2?}", duration);
 }
-
 fn base_rsync_args(args: &Args, dry_run: bool) -> Vec<String> {
     let mut list = vec!["-avzu".to_string()];
     if !dry_run {
@@ -635,10 +630,27 @@ fn base_rsync_args(args: &Args, dry_run: bool) -> Vec<String> {
     list.push("--stats".to_string());
 
     if !args.all {
+        list.push("--exclude=*.o".to_string());
+        list.push("--exclude=*.obj".to_string());
+        list.push("--exclude=*.a".to_string());
+        list.push("--exclude=*.lib".to_string());
+        list.push("--exclude=*.so".to_string());
+        list.push("--exclude=*.dylib".to_string());
+        list.push("--exclude=*.dll".to_string());
+        list.push("--exclude=*.exe".to_string());
+        list.push("--exclude=__pycache__/".to_string());
+        list.push("--exclude=*.pyc".to_string());
         list.push("--exclude=.git/".to_string());
         list.push("--exclude=node_modules/".to_string());
         list.push("--exclude=target/".to_string());
+        list.push("--exclude=.next/".to_string());
+        list.push("--exclude=dist/".to_string());
+        list.push("--exclude=build/".to_string());
+        list.push("--exclude=.terraform/".to_string());
         list.push("--exclude=.DS_Store".to_string());
+        list.push("--exclude=Thumbs.db".to_string());
+        list.push("--exclude=*.swp".to_string());
+        list.push("--exclude=*~".to_string());
     }
 
     if args.gitignore {
@@ -647,6 +659,8 @@ fn base_rsync_args(args: &Args, dry_run: bool) -> Vec<String> {
 
     if let Some(max_size) = &args.max_size {
         list.push(format!("--max-size={}", max_size));
+    } else if !args.large && !args.all {
+        list.push("--max-size=10m".to_string());
     }
 
     if args.backup {
@@ -867,6 +881,7 @@ mod tests {
             pull: false,
             watch: false,
             all: false,
+            large: false,
             gitignore: false,
             max_size: None,
             backup: false,
@@ -886,6 +901,7 @@ mod tests {
             pull: false,
             watch: false,
             all: false,
+            large: false,
             gitignore: false,
             max_size: None,
             backup: false,
@@ -905,6 +921,7 @@ mod tests {
             pull: true,
             watch: false,
             all: false,
+            large: false,
             gitignore: false,
             max_size: None,
             backup: false,
@@ -924,6 +941,7 @@ mod tests {
             pull: false,
             watch: false,
             all: false,
+            large: false,
             gitignore: false,
             max_size: None,
             backup: false,
@@ -931,30 +949,25 @@ mod tests {
             no_perms: false,
         };
 
-        // Default excludes
         let rsync_args = base_rsync_args(&args, true);
-        assert!(rsync_args.iter().any(|a| a == "--exclude=node_modules/"));
+        assert!(rsync_args.iter().any(|a| a == "--max-size=10m"));
 
-        // --all should remove excludes
+        args.large = true;
+        let rsync_args = base_rsync_args(&args, true);
+        assert!(!rsync_args.iter().any(|a| a == "--max-size=10m"));
+
         args.all = true;
         let rsync_args = base_rsync_args(&args, true);
-        assert!(!rsync_args.iter().any(|a| a == "--exclude=node_modules/"));
+        assert!(!rsync_args.iter().any(|a| a == "--max-size=10m"));
 
-        // --gitignore
         args.gitignore = true;
         let rsync_args = base_rsync_args(&args, true);
         assert!(rsync_args.iter().any(|a| a == "--filter=:- .gitignore"));
 
-        // --backup
         args.backup = true;
         let rsync_args = base_rsync_args(&args, true);
         assert!(rsync_args.iter().any(|a| a == "--backup"));
         assert!(rsync_args.iter().any(|a| a == "--backup-dir=.syncz-backups"));
-
-        // --max-size
-        args.max_size = Some("100M".to_string());
-        let rsync_args = base_rsync_args(&args, true);
-        assert!(rsync_args.iter().any(|a| a == "--max-size=100M"));
     }
 
     #[test]
@@ -1006,6 +1019,7 @@ mod tests {
             pull: false,
             watch: false,
             all: false,
+            large: false,
             gitignore: false,
             max_size: None,
             backup: false,
