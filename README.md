@@ -6,6 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/JiwanChung/syncz/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
+  <a href="https://crates.io/crates/syncz"><img src="https://img.shields.io/crates/v/syncz.svg" alt="Crates.io"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.70%2B-orange.svg" alt="Rust"></a>
 </p>
 
@@ -28,6 +29,8 @@
 - **Sensible Defaults** — Auto-excludes `.git/`, `node_modules/`, `target/`, `.DS_Store`
 
 ## Installation
+
+Install via [crates.io](https://crates.io/crates/syncz):
 
 ```bash
 cargo install syncz
