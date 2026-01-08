@@ -1,10 +1,10 @@
 [package]
-name = "sync-rs"
-version = "0.1.2"
+name = "syncz"
+version = "0.1.3"
 edition = "2021"
 description = "Zero-config file sync between local and remote machines using rsync + ssh"
 license = "MIT"
-repository = "https://github.com/JiwanChung/sync-rs"
+repository = "https://github.com/JiwanChung/syncz"
 keywords = ["rsync", "ssh", "sync", "cli", "remote"]
 categories = ["command-line-utilities", "development-tools"]
 

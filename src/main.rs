@@ -30,7 +30,7 @@ impl CommandRunner for RealRunner {
 }
 
 #[derive(Parser, Debug)]
-#[command(author, version, about = "sync-rs: rsync + ssh with smart pathing")]
+#[command(author, version, about = "syncz: rsync + ssh with smart pathing")]
 struct Args {
     /// Local path to sync (push) or path to pull into (pull)
     path: String,

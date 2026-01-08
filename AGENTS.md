@@ -1,8 +1,8 @@
-# AGENT.md: `sync-rs` Project Specification
+# AGENT.md: `syncz` Project Specification
 
 ## 1. Executive Summary
 
-`sync-rs` is a high-performance Rust CLI designed to bridge the gap between local development and remote environments. It abstracts the complexity of `rsync` and `ssh` into a "zero-config" experience, automatically mapping paths, ensuring remote directory existence, and resolving hosts.
+`syncz` is a high-performance Rust CLI designed to bridge the gap between local development and remote environments. It abstracts the complexity of `rsync` and `ssh` into a "zero-config" experience, automatically mapping paths, ensuring remote directory existence, and resolving hosts.
 
 ---
 
@@ -13,7 +13,7 @@
 The tool maps paths relative to the user's home directory across different environments.
 
 * **Path Mapping:** `~/projects/xx` locally maps to `~/projects/xx` on the remote, regardless of the absolute path difference (e.g., `/Users/name` vs `/home/name`).
-* **Auto-Creation:** If the destination parent directory does not exist, `sync-rs` will automatically create it using `--mkpath` or a remote `mkdir -p` command.
+* **Auto-Creation:** If the destination parent directory does not exist, `syncz` will automatically create it using `--mkpath` or a remote `mkdir -p` command.
 * **Trailing Slash Normalization:** The CLI automatically handles trailing slashes to ensure the **directory itself** and its **contents** are synced consistently without user micro-management.
 * **File Support:** Detects if the input is a single file and adjusts the `rsync` command to avoid creating a directory shell around it.
 

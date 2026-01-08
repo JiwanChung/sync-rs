@@ -1,11 +1,11 @@
-<h1 align="center">sync-rs</h1>
+<h1 align="center">syncz</h1>
 
 <p align="center">
   <strong>Zero-config file sync between local and remote machines</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/JiwanChung/sync-rs/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
+  <a href="https://github.com/JiwanChung/syncz/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.70%2B-orange.svg" alt="Rust"></a>
 </p>
 
@@ -30,7 +30,7 @@
 ## Installation
 
 ```bash
-cargo install --git https://github.com/JiwanChung/sync-rs
+cargo install syncz
 ```
 
 > Requires `rsync` and `ssh` in your PATH.
@@ -39,25 +39,25 @@ cargo install --git https://github.com/JiwanChung/sync-rs
 
 ```bash
 # Sync both ways (default)
-sync-rs ~/projects/my-app my-server
+syncz ~/projects/my-app my-server
 
 # Push only
-sync-rs --push ~/projects/my-app my-server
+syncz --push ~/projects/my-app my-server
 
 # Pull only
-sync-rs --pull ~/projects/my-app my-server
+syncz --pull ~/projects/my-app my-server
 
 # Preview changes first
-sync-rs -d ~/projects/my-app my-server
+syncz -d ~/projects/my-app my-server
 
 # No host? Get a fuzzy picker
-sync-rs ~/projects/my-app
+syncz ~/projects/my-app
 ```
 
 ## Usage
 
 ```
-sync-rs [OPTIONS] <PATH> [HOST]
+syncz [OPTIONS] <PATH> [HOST]
 ```
 
 | Option | Description |
