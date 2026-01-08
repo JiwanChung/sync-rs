@@ -2,6 +2,11 @@
 name = "sync-rs"
 version = "0.1.1"
 edition = "2021"
+description = "Zero-config file sync between local and remote machines using rsync + ssh"
+license = "MIT"
+repository = "https://github.com/JiwanChung/sync-rs"
+keywords = ["rsync", "ssh", "sync", "cli", "remote"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 anyhow = "1"
