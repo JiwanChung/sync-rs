@@ -50,14 +50,14 @@ The tool maps paths relative to the user's home directory across different envir
 
 ---
 
-## 5. Development Roadmap
+## 5. Implemented Features
 
-* [x] **Phase 1: CLI & SSH Discovery.** Implement `clap` and `~/.ssh/config` parsing.
-* [x] **Phase 2: Smart Pathing.** Logic for home-directory translation and `mkdir -p` triggers.
-* [x] **Phase 3: Rsync Execution.** Wrapping the system `rsync` with optimized flags (`-avzP`).
-* [x] **Phase 4: Dry Run Visualizer.** Parsing `--dry-run` output into a clean human-readable tree.
-* [x] **Phase 5: Performance.** Implement SSH multiplexing check.
-* [x] **Phase 6: Bidirectional Sync.** Sequential rsync passes with `--update`.
+* [x] **CLI & SSH Discovery:** `clap` based arguments and `~/.ssh/config` parsing for host selection.
+* [x] **Smart Pathing:** Automatic logic for home-directory translation and remote `mkdir -p` triggers.
+* [x] **Rsync Execution:** Wrapping the system `rsync` with optimized flags (`-avzP`).
+* [x] **Dry Run Visualizer:** Parsing `--dry-run` output into a clean human-readable tree.
+* [x] **Performance:** SSH ControlMaster (multiplexing) enabled for fast connection reuse.
+* [x] **Bidirectional Sync:** Default mode uses sequential rsync passes with `--update` for a "Newer Wins" strategy.
 
 ---
 
