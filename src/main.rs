@@ -87,8 +87,20 @@ impl Args {
 }
 
 fn main() -> Result<()> {
-    let args = Args::parse();
+    let mut args = Args::parse();
     let runner = RealRunner;
+
+    // Smart argument handling:
+    // If only ONE positional argument is provided, and it's NOT a local path,
+    // treat it as the host and default path to '.'
+    if args.path.is_some() && args.host.is_none() {
+        let p = args.path.as_ref().unwrap();
+        if !Path::new(p).exists() {
+            // It's likely a host
+            args.host = args.path.take();
+            args.path = Some(".".to_string());
+        }
+    }
 
     let path_str = args.path.as_deref().unwrap_or(".");
     let local_path = expand_path(path_str)?;
@@ -454,7 +466,6 @@ fn run_rsync(
 
     let mut cmd = Command::new("rsync");
     let mut base_args = base_rsync_args(args, false);
-    // Ensure itemized changes for the final summary
     if !base_args.iter().any(|a| a == "--itemize-changes") {
         base_args.push("--itemize-changes".to_string());
     }
@@ -498,7 +509,6 @@ fn run_rsync(
             if line.trim().is_empty() {
                 continue;
             }
-            // Itemized line format: %i|%n
             if line.contains('|') {
                 if let Ok(mut guard) = itemized_clone.lock() {
                     guard.push(line.clone());
@@ -543,7 +553,6 @@ fn run_rsync(
         bail!("rsync failed");
     }
 
-    // Print Itemized Changes
     if let Ok(guard) = itemized_lines.lock() {
         if !guard.is_empty() {
             println!("Changes:");
@@ -624,9 +633,6 @@ fn base_rsync_args(args: &Args, dry_run: bool) -> Vec<String> {
     list.push("-e".to_string());
     list.push(format!("ssh {}", ssh_args().join(" ")));
     list.push("--stats".to_string());
-    if !dry_run {
-        // Output format is handled above via --out-format
-    }
 
     if !args.all {
         list.push("--exclude=.git/".to_string());
