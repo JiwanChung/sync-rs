@@ -61,6 +61,28 @@ The tool maps paths relative to the user's home directory across different envir
 
 ---
 
+## 6. Future Roadmap
+
+### 1. Watch Mode (`--watch`)
+*   **Goal:** Provide a "live sync" experience for development loops.
+*   **Strategy:** Use `notify` crate to watch local filesystem events.
+*   **Behavior:** Debounce rapid events and trigger a `Push` sync automatically.
+
+### 2. Advanced Filtering
+*   **Goal:** Give users granular control over what gets synced.
+*   **Refinement:**
+    *   `--all`: Disable default smart excludes (sync `node_modules`, `target`, etc.).
+    *   `--gitignore`: Parse and respect `.gitignore` files.
+    *   `--max-size <SIZE>`: Exclude large artifacts.
+
+### 3. Safety & Conflict Handling
+*   **Goal:** Prevent accidental data loss during bidirectional syncs.
+*   **Strategy:**
+    *   `--backup`: Enable `rsync --backup` to save overwritten files to a timestamped directory (e.g., `~/.syncz/backups`).
+    *   **Conflict Reporting:** improved logging when files are updated on both sides (requires state tracking or complex heuristics).
+
+---
+
 ### Implementation Detail: The "mkdir" Strategy
 
 To ensure the remote path exists without slowing down the app, the CLI will execute:
