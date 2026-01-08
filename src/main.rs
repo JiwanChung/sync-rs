@@ -699,7 +699,7 @@ fn shell_escape(value: &str) -> String {
             out.push(ch);
         }
     }
-    out.push('`');
+    out.push('\'');
     out
 }
 
@@ -844,6 +844,48 @@ mod tests {
         };
         assert!(!args.is_push());
         assert!(args.is_pull());
+    }
+
+    #[test]
+    fn test_base_rsync_args_logic() {
+        let mut args = Args {
+            path: "foo".to_string(),
+            host: None,
+            push: false,
+            pull: false,
+            watch: false,
+            all: false,
+            gitignore: false,
+            max_size: None,
+            backup: false,
+            dry_run: true,
+            no_perms: false,
+        };
+
+        // Default excludes
+        let rsync_args = base_rsync_args(&args, true);
+        assert!(rsync_args.iter().any(|a| a == "--exclude=node_modules/"));
+
+        // --all should remove excludes
+        args.all = true;
+        let rsync_args = base_rsync_args(&args, true);
+        assert!(!rsync_args.iter().any(|a| a == "--exclude=node_modules/"));
+
+        // --gitignore
+        args.gitignore = true;
+        let rsync_args = base_rsync_args(&args, true);
+        assert!(rsync_args.iter().any(|a| a == "--filter=:- .gitignore"));
+
+        // --backup
+        args.backup = true;
+        let rsync_args = base_rsync_args(&args, true);
+        assert!(rsync_args.iter().any(|a| a == "--backup"));
+        assert!(rsync_args.iter().any(|a| a == "--backup-dir=.syncz-backups"));
+
+        // --max-size
+        args.max_size = Some("100M".to_string());
+        let rsync_args = base_rsync_args(&args, true);
+        assert!(rsync_args.iter().any(|a| a == "--max-size=100M"));
     }
 
     #[test]
