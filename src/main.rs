@@ -33,10 +33,10 @@ impl CommandRunner for RealRunner {
 #[derive(Parser, Debug)]
 #[command(author, version, about = "syncz: rsync + ssh with smart pathing")]
 struct Args {
-    /// Local path to sync (push) or path to pull into (pull)
-    path: String,
+    /// Local path to sync (push) or path to pull into (pull). Defaults to current directory.
+    path: Option<String>,
 
-    /// Host to sync with; if omitted, a picker from ~/.ssh/config is used
+    /// Host to sync with; if omitted, the last used host or a picker is used.
     host: Option<String>,
 
     /// Push local -> remote (default is bidirectional)
@@ -90,14 +90,25 @@ fn main() -> Result<()> {
     let args = Args::parse();
     let runner = RealRunner;
 
-    let host = match &args.host {
-        Some(h) => h.clone(),
-        None => pick_host_from_ssh_config()?,
-    };
-
-    let local_path = expand_path(&args.path)?;
+    let path_str = args.path.as_deref().unwrap_or(".");
+    let local_path = expand_path(path_str)?;
     let local_path = normalize_path(&local_path)?;
     let home = dirs::home_dir().ok_or_else(|| anyhow!("unable to resolve home dir"))?;
+
+    let host = match &args.host {
+        Some(h) => {
+            save_last_host(h)?;
+            h.clone()
+        }
+        None => match load_last_host()? {
+            Some(h) => h,
+            None => {
+                let h = pick_host_from_ssh_config()?;
+                save_last_host(&h)?;
+                h
+            }
+        },
+    };
 
     let remote_path = map_to_remote(&local_path, &home);
 
@@ -117,6 +128,30 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn get_state_path() -> Result<PathBuf> {
+    let home = dirs::home_dir().ok_or_else(|| anyhow!("unable to resolve home dir"))?;
+    Ok(home.join(".syncz_state"))
+}
+
+fn save_last_host(host: &str) -> Result<()> {
+    let path = get_state_path()?;
+    fs::write(path, host).context("failed to save last host")?;
+    Ok(())
+}
+
+fn load_last_host() -> Result<Option<String>> {
+    let path = get_state_path()?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let host = fs::read_to_string(path)?.trim().to_string();
+    if host.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(host))
+    }
 }
 
 fn watch_loop(
@@ -418,7 +453,12 @@ fn run_rsync(
     let (src, dst) = sync_endpoints(host, local_path, remote_path, is_file, pulling);
 
     let mut cmd = Command::new("rsync");
-    cmd.args(base_rsync_args(args, false));
+    let mut base_args = base_rsync_args(args, false);
+    // Ensure itemized changes for the final summary
+    if !base_args.iter().any(|a| a == "--itemize-changes") {
+        base_args.push("--itemize-changes".to_string());
+    }
+    cmd.args(base_args);
     cmd.arg(src);
     cmd.arg(dst);
     cmd.stdout(Stdio::piped());
@@ -445,18 +485,31 @@ fn run_rsync(
     let overall = Arc::new(overall);
     let current = Arc::new(current);
     let stats_lines = Arc::new(Mutex::new(Vec::new()));
+    let itemized_lines = Arc::new(Mutex::new(Vec::new()));
 
     let stdout = child.stdout.take().ok_or_else(|| anyhow!("no stdout"))?;
     let stderr = child.stderr.take().ok_or_else(|| anyhow!("no stderr"))?;
 
     let current_clone = Arc::clone(&current);
+    let itemized_clone = Arc::clone(&itemized_lines);
     let stdout_handle = std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
         for line in reader.lines().flatten() {
             if line.trim().is_empty() {
                 continue;
             }
-            current_clone.set_message(line);
+            // Itemized line format: %i|%n
+            if line.contains('|') {
+                if let Ok(mut guard) = itemized_clone.lock() {
+                    guard.push(line.clone());
+                }
+                let parts: Vec<&str> = line.split('|').collect();
+                if parts.len() >= 2 {
+                    current_clone.set_message(parts[1].to_string());
+                }
+            } else {
+                current_clone.set_message(line);
+            }
         }
     });
 
@@ -488,6 +541,15 @@ fn run_rsync(
 
     if !status.success() {
         bail!("rsync failed");
+    }
+
+    // Print Itemized Changes
+    if let Ok(guard) = itemized_lines.lock() {
+        if !guard.is_empty() {
+            println!("Changes:");
+            let itemized_blob = guard.join("\n");
+            println!("{}", render_tree(&itemized_blob));
+        }
     }
 
     let stats = stats_lines.lock().ok().map(|lines| lines.clone()).unwrap_or_default();
@@ -557,12 +619,13 @@ fn base_rsync_args(args: &Args, dry_run: bool) -> Vec<String> {
         list.push("--partial".to_string());
         list.push("--inplace".to_string());
         list.push("--info=progress2".to_string());
+        list.push("--out-format=%i|%n".to_string());
     }
     list.push("-e".to_string());
     list.push(format!("ssh {}", ssh_args().join(" ")));
     list.push("--stats".to_string());
     if !dry_run {
-        list.push("--out-format=%n".to_string());
+        // Output format is handled above via --out-format
     }
 
     if !args.all {
@@ -792,7 +855,7 @@ mod tests {
     #[test]
     fn args_default_to_bidirectional() {
         let args = Args {
-            path: "foo".to_string(),
+            path: None,
             host: None,
             push: false,
             pull: false,
@@ -811,7 +874,7 @@ mod tests {
     #[test]
     fn args_push_only() {
         let args = Args {
-            path: "foo".to_string(),
+            path: None,
             host: None,
             push: true,
             pull: false,
@@ -830,7 +893,7 @@ mod tests {
     #[test]
     fn args_pull_only() {
         let args = Args {
-            path: "foo".to_string(),
+            path: None,
             host: None,
             push: false,
             pull: true,
@@ -849,7 +912,7 @@ mod tests {
     #[test]
     fn test_base_rsync_args_logic() {
         let mut args = Args {
-            path: "foo".to_string(),
+            path: None,
             host: None,
             push: false,
             pull: false,
@@ -931,7 +994,7 @@ mod tests {
     #[test]
     fn dry_run_parses_tree_and_stats() {
         let args = Args {
-            path: "project".to_string(),
+            path: None,
             host: Some("example".to_string()),
             push: false,
             pull: false,
