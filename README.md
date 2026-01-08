@@ -41,31 +41,36 @@ cargo install syncz
 ## Quick Start
 
 ```bash
-# Sync both ways (default)
-syncz ~/projects/my-app my-server
+# Sync current directory with the last used host (Zero-Arg Sync!)
+syncz
+
+# Sync current directory with a specific host
+syncz my-server
 
 # Watch for changes and push automatically
-syncz --watch ~/projects/my-app my-server
+syncz -w
 
 # Sync everything (including node_modules, etc.)
-syncz --all ~/projects/my-app my-server
+syncz -a
 
 # Respect .gitignore and backup overwrites
-syncz --gitignore --backup ~/projects/my-app my-server
+syncz -gb
 ```
 
 ## Usage
 
 ```
-syncz [OPTIONS] <PATH> [HOST]
+syncz [OPTIONS] [PATH] [HOST]
 ```
 
 | Option | Description |
 |--------|-------------|
+| `[PATH]` | Local path to sync. Defaults to current directory (`.`) |
+| `[HOST]` | SSH host. Defaults to last used host |
 | `--push` | Push from local to remote (disables bidirectional) |
 | `--pull` | Pull from remote to local (disables bidirectional) |
 | `-w`, `--watch` | Watch for local changes and sync (Push mode) |
-| `-a`, `--all` | Disable default smart excludes |
+| `-a`, `--all` | Disable default smart excludes and size limits |
 | `-l`, `--large` | Allow large files (>10MB) |
 | `-g`, `--gitignore` | Respect `.gitignore` file |
 | `--max-size <S>` | Exclude files larger than SIZE |
@@ -79,6 +84,7 @@ syncz [OPTIONS] <PATH> [HOST]
 2. **Auto mkdir** — Creates missing parent directories on the remote
 3. **SSH Multiplexing** — Reuses connections via ControlMaster for speed
 4. **Delta Transfer** — Only syncs what's changed
+5. **Persistence** — Remembers the last successful host in `~/.syncz_state` for one-word syncing
 
 ## License
 
