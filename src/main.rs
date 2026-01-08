@@ -2,6 +2,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use clap::{ArgAction, Parser};
 use dialoguer::{theme::ColorfulTheme, FuzzySelect};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -46,6 +47,26 @@ struct Args {
     #[arg(long, action = ArgAction::SetTrue, conflicts_with = "push")]
     pull: bool,
 
+    /// Watch for file changes and sync automatically (defaults to Push mode)
+    #[arg(long, action = ArgAction::SetTrue)]
+    watch: bool,
+
+    /// Sync everything (disable default smart excludes)
+    #[arg(long, action = ArgAction::SetTrue)]
+    all: bool,
+
+    /// Use .gitignore to exclude files
+    #[arg(long, action = ArgAction::SetTrue)]
+    gitignore: bool,
+
+    /// Exclude files larger than SIZE (e.g. 100M, 1G)
+    #[arg(long)]
+    max_size: Option<String>,
+
+    /// Backup updated/deleted files on the destination
+    #[arg(long, action = ArgAction::SetTrue)]
+    backup: bool,
+
     /// Dry run: show a tree-style diff and transfer size
     #[arg(short = 'd', long, action = ArgAction::SetTrue)]
     dry_run: bool,
@@ -80,17 +101,60 @@ fn main() -> Result<()> {
 
     let remote_path = map_to_remote(&local_path, &home);
 
-    if args.is_push() {
-        let context = if args.is_pull() { "[Upstream]" } else { "" };
-        push(&runner, &host, &local_path, &remote_path, &args, context)?;
-    }
+    if args.watch {
+        println!("👀 Watching for changes in {}...", local_path.display());
+        watch_loop(&runner, &host, &local_path, &remote_path, &args)?;
+    } else {
+        if args.is_push() {
+            let context = if args.is_pull() { "[Upstream]" } else { "" };
+            push(&runner, &host, &local_path, &remote_path, &args, context)?;
+        }
 
-    if args.is_pull() {
-        let context = if args.is_push() { "[Downstream]" } else { "" };
-        pull(&runner, &host, &local_path, &remote_path, &args, context)?;
+        if args.is_pull() {
+            let context = if args.is_push() { "[Downstream]" } else { "" };
+            pull(&runner, &host, &local_path, &remote_path, &args, context)?;
+        }
     }
 
     Ok(())
+}
+
+fn watch_loop(
+    runner: &dyn CommandRunner,
+    host: &str,
+    local_path: &Path,
+    remote_path: &str,
+    args: &Args,
+) -> Result<()> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    let mut watcher = RecommendedWatcher::new(tx, Config::default())?;
+
+    watcher.watch(local_path, RecursiveMode::Recursive)?;
+
+    let debounce_duration = Duration::from_millis(500);
+    let mut last_event = Instant::now();
+
+    loop {
+        if let Ok(event) = rx.recv() {
+            match event {
+                Ok(_) => {
+                    std::thread::sleep(Duration::from_millis(100));
+                    while let Ok(_) = rx.try_recv() {}
+
+                    if last_event.elapsed() > debounce_duration {
+                        println!("🔄 Change detected, syncing...");
+                        if let Err(e) = push(runner, host, local_path, remote_path, args, "[Watch]") {
+                            eprintln!("❌ Sync failed: {}", e);
+                        } else {
+                            println!("✅ Synced.");
+                        }
+                        last_event = Instant::now();
+                    }
+                }
+                Err(e) => eprintln!("❌ Watch error: {:?}", e),
+            }
+        }
+    }
 }
 
 fn expand_path(raw: &str) -> Result<PathBuf> {
@@ -458,7 +522,6 @@ fn print_summary(stats: &[String], duration: Duration) {
 
     for line in stats {
         let line = line.trim();
-        // Parse "sent 2,327 bytes  received 274 bytes ..."
         if line.starts_with("sent ") {
             if let Some(bytes_str) = line.strip_prefix("sent ") {
                 if let Some(end) = bytes_str.find(" bytes") {
@@ -466,7 +529,6 @@ fn print_summary(stats: &[String], duration: Duration) {
                 }
             }
         }
-        // Parse "total size is 706,617,380  speedup is ..."
         if line.starts_with("total size is ") {
             if let Some(rest) = line.strip_prefix("total size is ") {
                 if let Some(end) = rest.find("  ") {
@@ -502,10 +564,26 @@ fn base_rsync_args(args: &Args, dry_run: bool) -> Vec<String> {
     if !dry_run {
         list.push("--out-format=%n".to_string());
     }
-    list.push("--exclude=.git/".to_string());
-    list.push("--exclude=node_modules/".to_string());
-    list.push("--exclude=target/".to_string());
-    list.push("--exclude=.DS_Store".to_string());
+
+    if !args.all {
+        list.push("--exclude=.git/".to_string());
+        list.push("--exclude=node_modules/".to_string());
+        list.push("--exclude=target/".to_string());
+        list.push("--exclude=.DS_Store".to_string());
+    }
+
+    if args.gitignore {
+        list.push("--filter=:- .gitignore".to_string());
+    }
+
+    if let Some(max_size) = &args.max_size {
+        list.push(format!("--max-size={}", max_size));
+    }
+
+    if args.backup {
+        list.push("--backup".to_string());
+        list.push("--backup-dir=.syncz-backups".to_string());
+    }
 
     if args.no_perms {
         list.push("--no-perms".to_string());
@@ -525,8 +603,8 @@ fn sync_endpoints(
         (local_path.to_string_lossy().to_string(), remote_path.to_string())
     } else {
         (
-            format!( "{}/", local_path.to_string_lossy()),
-            format!( "{}/", remote_path),
+            format!("{}/", local_path.to_string_lossy()),
+            format!("{}/", remote_path),
         )
     };
 
@@ -597,12 +675,12 @@ fn insert_path(root: &mut TreeNode, path: &str) {
 
 fn render_node(lines: &mut Vec<String>, name: &str, node: &TreeNode, prefix: &str, last: bool) {
     let branch = if last { "+--" } else { "|--" };
-    lines.push(format!( "{}{} {}", prefix, branch, name));
+    lines.push(format!("{}{} {}", prefix, branch, name));
 
     let next_prefix = if last {
-        format!( "{}   ", prefix)
+        format!("{}   ", prefix)
     } else {
-        format!( "{}|  ", prefix)
+        format!("{}|  ", prefix)
     };
 
     let mut iter = node.children.iter().peekable();
@@ -621,7 +699,7 @@ fn shell_escape(value: &str) -> String {
             out.push(ch);
         }
     }
-    out.push('"');
+    out.push('`');
     out
 }
 
@@ -718,6 +796,11 @@ mod tests {
             host: None,
             push: false,
             pull: false,
+            watch: false,
+            all: false,
+            gitignore: false,
+            max_size: None,
+            backup: false,
             dry_run: false,
             no_perms: false,
         };
@@ -732,6 +815,11 @@ mod tests {
             host: None,
             push: true,
             pull: false,
+            watch: false,
+            all: false,
+            gitignore: false,
+            max_size: None,
+            backup: false,
             dry_run: false,
             no_perms: false,
         };
@@ -746,6 +834,11 @@ mod tests {
             host: None,
             push: false,
             pull: true,
+            watch: false,
+            all: false,
+            gitignore: false,
+            max_size: None,
+            backup: false,
             dry_run: false,
             no_perms: false,
         };
@@ -800,6 +893,11 @@ mod tests {
             host: Some("example".to_string()),
             push: false,
             pull: false,
+            watch: false,
+            all: false,
+            gitignore: false,
+            max_size: None,
+            backup: false,
             dry_run: true,
             no_perms: false,
         };
@@ -829,7 +927,6 @@ mod tests {
             status: None,
         }]);
 
-        // Testing dry run for push direction (pulling=false)
         let summary =
             run_dry_run(&runner, "example", local_path, remote_path, false, &args, false).unwrap();
         assert!(summary.tree.contains("+-- foo.txt"));

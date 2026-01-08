@@ -22,10 +22,10 @@
 - **Smart Path Mapping** — `~/projects/foo` syncs to `~/projects/foo` on remote, regardless of different home paths
 - **Zero Config** — Just run it. No config files needed
 - **Bi-directional (Default)** — Automatically syncs both ways (Newer Wins)
-- **Uni-directional** — Explicitly push with `--push` or pull with `--pull`
-- **Dry-run Preview** — See a tree-style diff before syncing
+- **Watch Mode** — Use `--watch` to automatically sync on file changes
+- **Advanced Filtering** — Sync everything with `--all`, or respect `--gitignore`
+- **Safety** — Protect overwritten files with `--backup`
 - **SSH Host Picker** — Fuzzy-select hosts from `~/.ssh/config`
-- **Progress Display** — Real-time transfer progress with summary stats
 - **Sensible Defaults** — Auto-excludes `.git/`, `node_modules/`, `target/`, `.DS_Store`
 
 ## Installation
@@ -44,17 +44,14 @@ cargo install syncz
 # Sync both ways (default)
 syncz ~/projects/my-app my-server
 
-# Push only
-syncz --push ~/projects/my-app my-server
+# Watch for changes and push automatically
+syncz --watch ~/projects/my-app my-server
 
-# Pull only
-syncz --pull ~/projects/my-app my-server
+# Sync everything (including node_modules, etc.)
+syncz --all ~/projects/my-app my-server
 
-# Preview changes first
-syncz -d ~/projects/my-app my-server
-
-# No host? Get a fuzzy picker
-syncz ~/projects/my-app
+# Respect .gitignore and backup overwrites
+syncz --gitignore --backup ~/projects/my-app my-server
 ```
 
 ## Usage
@@ -67,6 +64,11 @@ syncz [OPTIONS] <PATH> [HOST]
 |--------|-------------|
 | `--push` | Push from local to remote (disables bidirectional) |
 | `--pull` | Pull from remote to local (disables bidirectional) |
+| `--watch` | Watch for local changes and sync (Push mode) |
+| `--all` | Disable default smart excludes |
+| `--gitignore` | Respect `.gitignore` file |
+| `--max-size <S>` | Exclude files larger than SIZE |
+| `--backup` | Backup updated files to `.syncz-backups` |
 | `-d`, `--dry-run` | Preview changes with tree diff |
 | `--no-perms` | Skip permission sync (useful for macOS/Linux) |
 

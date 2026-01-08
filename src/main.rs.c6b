@@ -1,0 +1,42 @@
+
+fn parse_progress_percent(line: &str) -> Option<u8> {
+    if !line.contains('%') {
+        return None;
+    }
+    let mut pct = None;
+    for token in line.split_whitespace() {
+        if let Some(num) = token.strip_suffix('%') {
+            if let Ok(value) = num.parse::<u8>() {
+                pct = Some(value);
+                break;
+            }
+        }
+    }
+    pct
+}
+
+fn render_tree(output: &str) -> String {
+    let mut root = TreeNode::default();
+
+    for line in output.lines() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = line.split('|').collect();
+        if parts.len() < 2 {
+            continue;
+        }
+        let item = parts[1].trim_start_matches("./");
+        if item.is_empty() || item.starts_with('.') {
+            continue;
+        }
+        insert_path(&mut root, item);
+    }
+
+    let mut lines = Vec::new();
+    for (idx, (name, node)) in root.children.iter().enumerate() {
+        let last = idx + 1 == root.children.len();
+        render_node(&mut lines, name, node, "", last);
+    }
+    lines.join("\n")
+}

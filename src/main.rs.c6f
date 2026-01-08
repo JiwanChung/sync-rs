@@ -1,0 +1,93 @@
+
+    #[test]
+    fn remote_is_file_uses_ssh() {
+        let host = "example";
+        let remote = "~/projects/app/file.txt";
+        let mut args = ssh_args();
+        args.push(host.to_string());
+        args.push(format!("test -f {}", remote_shell_path(remote)));
+
+        let runner = FakeRunner::new(vec![ExpectedCall {
+            program: "ssh".to_string(),
+            args,
+            output: None,
+            status: Some(ok_status()),
+        }]);
+
+        let is_file = remote_is_file(&runner, host, remote).expect("remote_is_file");
+        assert!(is_file);
+    }
+
+    #[test]
+    fn ensure_remote_parent_creates_dir() {
+        let host = "example";
+        let remote_parent = "~/projects/app";
+        let mut args = ssh_args();
+        args.push(host.to_string());
+        args.push(format!(
+            "mkdir -p {}",
+            remote_shell_path(remote_parent)
+        ));
+
+        let runner = FakeRunner::new(vec![ExpectedCall {
+            program: "ssh".to_string(),
+            args,
+            output: None,
+            status: Some(ok_status()),
+        }]);
+
+        ensure_remote_parent(&runner, host, remote_parent).expect("ensure_remote_parent");
+    }
+
+    #[test]
+    fn dry_run_parses_tree_and_stats() {
+        let args = Args {
+            path: "project".to_string(),
+            host: Some("example".to_string()),
+            push: false,
+            pull: false,
+            watch: false,
+            all: false,
+            gitignore: false,
+            max_size: None,
+            backup: false,
+            dry_run: true,
+            no_perms: false,
+        };
+        let local_path = Path::new("/home/user/projects/app");
+        let remote_path = "~/projects/app";
+        let (src, dst) = sync_endpoints("example", local_path, remote_path, false, false);
+
+        let mut cmd_args = base_rsync_args(&args, true);
+        cmd_args.push("--dry-run".to_string());
+        cmd_args.push("--itemize-changes".to_string());
+        cmd_args.push("--out-format=%i|%n|%l".to_string());
+        cmd_args.push(src);
+        cmd_args.push(dst);
+
+        let stdout = b"f+++++++++|foo.txt|12\nd+++++++++|dir/|0\nf+++++++++|dir/bar.txt|24\n";
+        let stderr = b"Total transferred file size: 36 bytes\n";
+        let output = Output {
+            status: ok_status(),
+            stdout: stdout.to_vec(),
+            stderr: stderr.to_vec(),
+        };
+
+        let runner = FakeRunner::new(vec![ExpectedCall {
+            program: "rsync".to_string(),
+            args: cmd_args,
+            output: Some(output),
+            status: None,
+        }]);
+
+        let summary =
+            run_dry_run(&runner, "example", local_path, remote_path, false, &args, false).unwrap();
+        assert!(summary.tree.contains("+-- foo.txt"));
+        assert!(summary.tree.lines().any(|line| line.ends_with(" dir")));
+        assert!(summary.tree.contains("+-- bar.txt"));
+        assert_eq!(
+            summary.transferred_line.as_deref(),
+            Some("Total transferred file size: 36 bytes")
+        );
+    }
+}

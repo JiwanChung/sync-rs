@@ -1,0 +1,32 @@
+
+#[derive(Default)]
+struct TreeNode {
+    children: BTreeMap<String, TreeNode>,
+}
+
+fn insert_path(root: &mut TreeNode, path: &str) {
+    let mut node = root;
+    for part in path.split('/') {
+        if part.is_empty() {
+            continue;
+        }
+        node = node.children.entry(part.to_string()).or_default();
+    }
+}
+
+fn render_node(lines: &mut Vec<String>, name: &str, node: &TreeNode, prefix: &str, last: bool) {
+    let branch = if last { "+--" } else { "|--" };
+    lines.push(format!("{}{} {}", prefix, branch, name));
+
+    let next_prefix = if last {
+        format!("{}   ", prefix)
+    } else {
+        format!("{}|  ", prefix)
+    };
+
+    let mut iter = node.children.iter().peekable();
+    while let Some((child_name, child_node)) = iter.next() {
+        let is_last = iter.peek().is_none();
+        render_node(lines, child_name, child_node, &next_prefix, is_last);
+    }
+}

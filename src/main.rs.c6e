@@ -1,0 +1,108 @@
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::VecDeque;
+    use std::os::unix::process::ExitStatusExt;
+    use std::process::Output;
+
+    struct ExpectedCall {
+        program: String,
+        args: Vec<String>,
+        output: Option<Output>,
+        status: Option<std::process::ExitStatus>,
+    }
+
+    struct FakeRunner {
+        calls: Mutex<VecDeque<ExpectedCall>>,
+    }
+
+    impl FakeRunner {
+        fn new(calls: Vec<ExpectedCall>) -> Self {
+            Self {
+                calls: Mutex::new(VecDeque::from(calls)),
+            }
+        }
+
+        fn next_call(&self) -> ExpectedCall {
+            let mut guard = self.calls.lock().expect("lock calls");
+            guard.pop_front().expect("expected call")
+        }
+    }
+
+    impl CommandRunner for FakeRunner {
+        fn status(&self, program: &str, args: &[String]) -> Result<std::process::ExitStatus> {
+            let call = self.next_call();
+            assert_eq!(call.program, program);
+            assert_eq!(call.args, args);
+            Ok(call.status.expect("expected status"))
+        }
+
+        fn output(&self, program: &str, args: &[String]) -> Result<Output> {
+            let call = self.next_call();
+            assert_eq!(call.program, program);
+            assert_eq!(call.args, args);
+            Ok(call.output.expect("expected output"))
+        }
+    }
+
+    fn ok_status() -> std::process::ExitStatus {
+        std::process::ExitStatus::from_raw(0)
+    }
+
+    #[test]
+    fn args_default_to_bidirectional() {
+        let args = Args {
+            path: "foo".to_string(),
+            host: None,
+            push: false,
+            pull: false,
+            watch: false,
+            all: false,
+            gitignore: false,
+            max_size: None,
+            backup: false,
+            dry_run: false,
+            no_perms: false,
+        };
+        assert!(args.is_push());
+        assert!(args.is_pull());
+    }
+
+    #[test]
+    fn args_push_only() {
+        let args = Args {
+            path: "foo".to_string(),
+            host: None,
+            push: true,
+            pull: false,
+            watch: false,
+            all: false,
+            gitignore: false,
+            max_size: None,
+            backup: false,
+            dry_run: false,
+            no_perms: false,
+        };
+        assert!(args.is_push());
+        assert!(!args.is_pull());
+    }
+
+    #[test]
+    fn args_pull_only() {
+        let args = Args {
+            path: "foo".to_string(),
+            host: None,
+            push: false,
+            pull: true,
+            watch: false,
+            all: false,
+            gitignore: false,
+            max_size: None,
+            backup: false,
+            dry_run: false,
+            no_perms: false,
+        };
+        assert!(!args.is_push());
+        assert!(args.is_pull());
+    }
